@@ -47,6 +47,7 @@
             >
               {{ action }}
             </button>
+            <button class="link" type="button" @click="planNextRound(row)">下一轮待采</button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -80,6 +81,37 @@
         </div>
       </div>
     </Teleport>
+
+    <Teleport to="body">
+      <div v-if="showPlanModal" class="modal-overlay" @click.self="showPlanModal = false">
+        <div class="modal-card plan-card">
+          <header class="modal-head">
+            <h3>下一轮待采任务</h3>
+            <button class="btn ghost" type="button" @click="showPlanModal = false">&times;</button>
+          </header>
+          <div class="modal-body">
+            <p class="plan-message">{{ planMessage }}</p>
+            <table class="data-table">
+              <thead>
+                <tr><th>任务类型</th><th>日志序号</th><th>记录标识</th><th>盘点组</th><th>原因</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(task, index) in planTasks" :key="index">
+                  <td>{{ task.任务类型 }}</td>
+                  <td>{{ task.日志序号 }}</td>
+                  <td>{{ task.记录标识 }}</td>
+                  <td>{{ task.盘点组 }}</td>
+                  <td>{{ task.原因 || '—' }}</td>
+                </tr>
+                <tr v-if="!planTasks.length">
+                  <td colspan="5" class="empty-state">下一轮暂无待采任务</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -103,6 +135,9 @@ const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
 const showCreateModal = ref(false)
 const createFields = ref<Record<string, string>>({})
+const showPlanModal = ref(false)
+const planMessage = ref('')
+const planTasks = ref<Array<Record<string, string | number>>>([])
 
 function updateStats() {
   const data = rows.value
@@ -160,6 +195,25 @@ async function runAction(action: string, row: Row) {
   }
 }
 
+async function planNextRound(row: Row) {
+  errorMessage.value = ''
+  try {
+    const response = await request(`${ENDPOINT}/${row.id}/next-round`, {
+      method: 'POST',
+      body: JSON.stringify({ values: {} }),
+    })
+    const data = await response.json()
+    planMessage.value = data.message || ''
+    planTasks.value = data.entry?.待采任务 ?? []
+    showPlanModal.value = true
+    if (data.ok) {
+      await reload()
+    }
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '下一轮待采任务生成失败'
+  }
+}
+
 async function reload() {
   errorMessage.value = ''
   const query = new URLSearchParams(filters.value as Record<string, string>).toString()
@@ -179,3 +233,14 @@ async function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.plan-card {
+  width: 560px;
+}
+.plan-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+</style>

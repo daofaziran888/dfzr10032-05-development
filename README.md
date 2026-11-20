@@ -52,7 +52,7 @@ npm run dev
 | 数据源配置 | `datasource` | 数据源 | 源端编号、连接类型、接入地址 |
 | 网页采集规则 | `crawler` | 采集规则 | 规则编号、目标网址、页面选择器 |
 | API接入管理 | `apiclient` | API客户端 | 客户端编号、接口名称、请求方法 |
-| 增量采集 | `incremental` | 增量游标 | 游标编号、来源标识、增量字段 |
+| 增量采集 | `incremental` | 增量游标、增量采集批次 | 游标编号、来源标识、增量字段 |
 | RPA任务编排 | `robot_task` | RPA任务 | 任务编号、任务名称、页面定位器 |
 | 数据接入通道 | `ingestion` | 接入通道 | 通道编号、通道名称、输入格式 |
 | 格式解析器 | `parser` | 解析配置 | 解析编号、输入格式、输出格式 |
@@ -73,3 +73,28 @@ npm run dev
   `backend/app/routers/<模块>.py`，业务规则在 `backend/app/services/<模块>.py`。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 增量采集批次
+
+游标只登记“从哪里开始采”，可续做的批次记录“这一轮采到了什么”：
+
+- `GET /api/incremental/{游标id}/changes`：读取来源变更记录并按日志序号分组，
+  默认只返回确认位置之后的部分；同一日志序号下的多条记录（如同一次盘点的多个货位）归为一组。
+- `POST /api/incremental/{游标id}/batches`：开启下一轮批次，范围 = 上一轮遗留的待补采项
+  （保留原日志序号与原盘点组）+ 确认位置之后的新变更；已交付的记录不会重复进入范围。
+- `POST /api/incremental/batches/{批次id}/confirm`：确认一条记录交付成功，
+  重复确认直接跳过，重跑不会重复交付；来源读失败时自动按原记录位置登记补采。
+- `POST /api/incremental/batches/{批次id}/advance`：推进确认位置，
+  未确认的记录全部转入补采清单，确认位置不被单条失败卡住。
+- `GET /api/incremental/batches/{批次id}/unconfirmed?seq=6402`：确认位置推进后，
+  仍可按原日志序号核对每一条未确认记录。
+- `POST /api/schedule/{计划id}/next-round`：采集调度读取批次的确认位置与未完成清单，
+  生成下一轮待采任务，补采项关联到原盘点组。
+
+种子数据内置了验证场景：仓库库存来源 `WH-STOCK` 在序号 6402 返回同一盘点组
+`PD-202611-01` 的三个货位，第二个货位 `BIN-A02` 读失败，随后的 6403 已经可读。
+场景回归直接运行：
+
+```bash
+cd backend && python3 tests/test_incremental_batch.py
+```

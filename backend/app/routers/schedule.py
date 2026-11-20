@@ -65,3 +65,12 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
+
+
+@router.post("/{entry_id}/next-round", response_model=ActionResult)
+def plan_next_round(entry_id: int, payload: EntryPayload) -> ActionResult:
+    """读取关联增量游标的批次确认位置与未完成清单，生成下一轮待采任务；补采项关联原盘点组。"""
+    entry, tasks, message = service.plan_next_round(entry_id, payload.values)
+    if entry is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry={"计划": entry, "待采任务": tasks})
